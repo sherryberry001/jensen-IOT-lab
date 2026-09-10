@@ -1,0 +1,60 @@
+==============================================================
+ Scaling: ändra antalet repliker i drift
+==============================================================
+
+Utgångsläge:
+$ kubectl get pods
+jensen-iot-api-7b9fbb47d4-jzt8z   1/1   Running       0     88s
+jensen-iot-api-7b9fbb47d4-nlbgg   1/1   Running       0     5m56s
+jensen-iot-api-7b9fbb47d4-wxc9t   1/1   Running       0     23s
+
+--------------------------------------------------------------
+Skala upp till fem
+--------------------------------------------------------------
+$ kubectl scale deployment jensen-iot-api --replicas=5
+deployment.apps/jensen-iot-api scaled
+
+Direkt efteråt, två nya Pods startar:
+jensen-iot-api-7b9fbb47d4-c6zwb   0/1   Running       0     1s
+jensen-iot-api-7b9fbb47d4-jzt8z   1/1   Running       0     89s
+jensen-iot-api-7b9fbb47d4-nlbgg   1/1   Running       0     5m57s
+jensen-iot-api-7b9fbb47d4-tdjhw   0/1   Running       0     1s
+jensen-iot-api-7b9fbb47d4-wxc9t   1/1   Running       0     24s
+
+Waiting for deployment "jensen-iot-api" rollout to finish: 3 of 5 updated replicas are available...
+Waiting for deployment "jensen-iot-api" rollout to finish: 4 of 5 updated replicas are available...
+deployment "jensen-iot-api" successfully rolled out
+
+$ kubectl get pods
+jensen-iot-api-7b9fbb47d4-c6zwb   1/1   Running       0     7s
+jensen-iot-api-7b9fbb47d4-jzt8z   1/1   Running       0     95s
+jensen-iot-api-7b9fbb47d4-nlbgg   1/1   Running       0     6m3s
+jensen-iot-api-7b9fbb47d4-tdjhw   1/1   Running       0     7s
+jensen-iot-api-7b9fbb47d4-wxc9t   1/1   Running       0     30s
+
+$ kubectl get deployment jensen-iot-api
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE
+jensen-iot-api   5/5     5            5           6m3s
+
+--------------------------------------------------------------
+Skala ner till tre igen
+--------------------------------------------------------------
+$ kubectl scale deployment jensen-iot-api --replicas=3
+deployment.apps/jensen-iot-api scaled
+
+$ kubectl get pods
+NAME                              READY   STATUS        RESTARTS   AGE
+jensen-iot-api-7b9fbb47d4-c6zwb   1/1     Terminating   0          10s
+jensen-iot-api-7b9fbb47d4-jzt8z   1/1     Running       0          98s
+jensen-iot-api-7b9fbb47d4-nlbgg   1/1     Running       0          6m6s
+jensen-iot-api-7b9fbb47d4-tdjhw   1/1     Terminating   0          10s
+jensen-iot-api-7b9fbb47d4-wxc9t   1/1     Running       0          33s
+
+--------------------------------------------------------------
+Observation
+--------------------------------------------------------------
+Skalningen ändrar bara fältet replicas i Deploymenten. Resten sköter
+ReplicaSet:et: det jämför önskat antal med faktiskt antal och skapar
+eller avslutar Pods tills de stämmer. Ingen omstart av tjänsten behövs
+och Servicen fångar upp de nya Poddarna automatiskt, eftersom den väljer
+Pods på etiketten app=jensen-iot-api och inte på namn eller IP.

@@ -1,0 +1,71 @@
+==============================================================
+ Persistence: data överlever att containrarna stoppas
+==============================================================
+
+Simulatorn stoppas först, så att inget skriver under kontrollen och
+siffrorna går att jämföra rakt av.
+$ docker compose stop simulator
+
+Före nedstängning:
+  antal mätningar: 945
+  senaste id:      991
+
+Cachen är varm:
+$ docker compose exec redis redis-cli KEYS "latest:*"
+latest:sensor-001
+latest:sensor-002
+latest:sensor-003
+
+$ docker compose down
+ Container jensen-iot-simulator Removed 
+ Container jensen-iot-api Removed 
+ Container jensen-iot-redis Removed 
+ Container jensen-iot-db Removed 
+ Network jensen-iot-lab_default Removed 
+  (containrarna är borta)
+
+Volymen ligger kvar. Det är den som håller datan, inte containern:
+$ docker volume ls
+local     jensen-iot-lab_postgres_data
+
+$ docker compose up -d db redis api
+ Container jensen-iot-db Started 
+ Container jensen-iot-redis Started 
+ Container jensen-iot-api Started 
+  API:t svarar igen.
+
+--------------------------------------------------------------
+Efter omstart
+--------------------------------------------------------------
+  antal mätningar: 945   (var 945 före)
+
+Raden som fanns före nedstängningen finns kvar:
+ id  | device_id  | temperature |         created_at         
+-----+------------+-------------+----------------------------
+ 991 | sensor-003 |       23.07 | 2026-09-10 11:37:36.523117
+(1 row)
+
+PostgreSQL: datan överlevde.
+
+Redis efter omstarten, innan någon läsning skett:
+$ docker compose exec redis redis-cli KEYS "latest:*"
+  (tom)
+Redis: cachen är borta, som väntat.
+
+Cachen byggs upp igen vid nästa läsning, från PostgreSQL:
+$ curl -s localhost:5001/devices/sensor-001/latest
+  source = database  id = 989
+latest:sensor-001
+
+--------------------------------------------------------------
+Observation
+--------------------------------------------------------------
+PostgreSQL skriver till den namngivna volymen postgres_data, som är
+fristående från containern. docker compose down tar bort containern
+men rör inte volymen, så datan finns kvar vid nästa start. Först
+docker compose down -v raderar den.
+
+Redis har ingen volym och tappar allt vid omstart. Det gör inget,
+eftersom cachen bara innehåller en kopia av något som redan finns i
+PostgreSQL. Första läsningen efter omstarten blir en cache miss, går
+till databasen och fyller på cachen igen.

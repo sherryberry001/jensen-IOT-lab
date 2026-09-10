@@ -1,0 +1,123 @@
+==============================================================
+ SQL-frågorna i docs/queries.sql, körda mot databasen
+==============================================================
+
+$ docker compose exec db psql -U student -d jensen_iot < docs/queries.sql
+
+Not: fråga 3 listar alla mätningar i fönstret. Här visas de tio
+senaste, annars blir utskriften närmare tusen rader lång. Räkningen
+direkt efter visar hur många rader frågan verkligen träffar.
+
+SELECT COUNT(*) AS total_measurements
+FROM measurements;
+ total_measurements 
+--------------------
+                985
+(1 row)
+
+SELECT ROUND(AVG(temperature), 2) AS avg_temperature
+FROM measurements;
+ avg_temperature 
+-----------------
+           21.42
+(1 row)
+
+SELECT id, device_id, temperature, humidity, battery, created_at
+FROM measurements
+WHERE created_at >= NOW() - INTERVAL '24 hours'
+ORDER BY created_at DESC
+LIMIT 10;
+  id  | device_id  | temperature | humidity | battery |         created_at         
+------+------------+-------------+----------+---------+----------------------------
+ 1031 | sensor-003 |       22.68 |    40.83 |      80 | 2026-09-10 11:39:21.949169
+ 1030 | sensor-002 |       19.12 |    36.89 |      64 | 2026-09-10 11:39:21.937928
+ 1029 | sensor-001 |       20.56 |    37.39 |     100 | 2026-09-10 11:39:21.911558
+ 1028 | sensor-003 |       24.34 |    45.07 |      96 | 2026-09-10 11:39:16.876032
+ 1027 | sensor-002 |       20.11 |    39.72 |      71 | 2026-09-10 11:39:16.864322
+ 1026 | sensor-001 |       20.35 |    49.13 |      59 | 2026-09-10 11:39:16.839534
+ 1025 | sensor-003 |       22.60 |    59.75 |      60 | 2026-09-10 11:39:11.784758
+ 1024 | sensor-002 |       18.21 |    43.87 |      46 | 2026-09-10 11:39:11.771964
+ 1023 | sensor-001 |       22.03 |    61.42 |      61 | 2026-09-10 11:39:11.755942
+ 1022 | sensor-003 |       22.56 |    45.60 |      78 | 2026-09-10 11:39:06.730264
+(10 rows)
+
+SELECT COUNT(*) AS measurements_last_24h
+FROM measurements
+WHERE created_at >= NOW() - INTERVAL '24 hours';
+ measurements_last_24h 
+-----------------------
+                   985
+(1 row)
+
+SELECT
+    d.device_id,
+    d.location,
+    ROUND(AVG(m.temperature), 2) AS avg_temperature,
+    COUNT(*)                     AS measurement_count
+FROM measurements m
+JOIN devices d ON d.device_id = m.device_id
+GROUP BY d.device_id, d.location
+ORDER BY avg_temperature DESC
+LIMIT 1;
+ device_id  | location  | avg_temperature | measurement_count 
+------------+-----------+-----------------+-------------------
+ sensor-003 | Factory C |           23.48 |               295
+(1 row)
+
+SELECT
+    d.device_id,
+    d.location,
+    ROUND(AVG(m.temperature), 2) AS avg_temperature,
+    MIN(m.temperature)           AS min_temperature,
+    MAX(m.temperature)           AS max_temperature
+FROM measurements m
+JOIN devices d ON d.device_id = m.device_id
+GROUP BY d.device_id, d.location
+ORDER BY avg_temperature DESC;
+ device_id  | location  | avg_temperature | min_temperature | max_temperature 
+------------+-----------+-----------------+-----------------+-----------------
+ sensor-003 | Factory C |           23.48 |           22.01 |           25.00
+ sensor-001 | Factory A |           21.52 |           20.00 |           22.99
+ sensor-002 | Factory B |           19.54 |           18.03 |           20.99
+(3 rows)
+
+SELECT
+    d.device_id,
+    d.location,
+    COUNT(*)            AS measurement_count,
+    MAX(m.created_at)   AS last_measurement_at
+FROM measurements m
+JOIN devices d ON d.device_id = m.device_id
+GROUP BY d.device_id, d.location
+ORDER BY measurement_count DESC
+LIMIT 1;
+ device_id  | location  | measurement_count |    last_measurement_at     
+------------+-----------+-------------------+----------------------------
+ sensor-001 | Factory A |               345 | 2026-09-10 11:39:21.911558
+(1 row)
+
+SELECT
+    d.device_id,
+    d.location,
+    s.last_seen,
+    COALESCE(s.measurement_count, 0) AS measurement_count,
+    CASE
+        WHEN s.last_seen >= NOW() - INTERVAL '30 seconds' THEN 'online'
+        ELSE 'offline'
+    END AS status
+FROM devices d
+LEFT JOIN (
+    SELECT device_id,
+           MAX(created_at) AS last_seen,
+           COUNT(*)        AS measurement_count
+    FROM measurements
+    GROUP BY device_id
+) s ON s.device_id = d.device_id
+ORDER BY d.device_id;
+ device_id  | location  |         last_seen          | measurement_count | status 
+------------+-----------+----------------------------+-------------------+--------
+ sensor-001 | Factory A | 2026-09-10 11:39:21.911558 |               345 | online
+ sensor-002 | Factory B | 2026-09-10 11:39:21.937928 |               345 | online
+ sensor-003 | Factory C | 2026-09-10 11:39:21.949169 |               295 | online
+(3 rows)
+

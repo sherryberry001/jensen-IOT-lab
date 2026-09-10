@@ -1,0 +1,122 @@
+==============================================================
+ Rolling update och rollback
+==============================================================
+
+Utgångsläge, version lab:
+$ kubectl get pods
+NAME                              READY   STATUS    RESTARTS   AGE
+jensen-iot-api-576b5987d5-5rj2c   1/1     Running   0          41s
+jensen-iot-api-576b5987d5-8nt74   1/1     Running   0          47s
+jensen-iot-api-576b5987d5-bqq5h   1/1     Running   0          53s
+
+--------------------------------------------------------------
+Rulla ut version lab-v2
+--------------------------------------------------------------
+Imagen och APP_VERSION ändras i samma patch, så att det blir en
+revision och inte två.
+
+$ kubectl patch deployment jensen-iot-api --type=strategic -p ...image: jensen-iot-api:lab-v2, APP_VERSION: lab-v2
+deployment.apps/jensen-iot-api patched
+
+Mitt under utrullningen. Gamla och nya Pods samsas, och antalet går
+aldrig under tre eftersom maxUnavailable är 0:
+NAME                              READY   STATUS        RESTARTS   AGE
+jensen-iot-api-566ff5b4c9-dxndq   0/1     Running       0          1s
+jensen-iot-api-566ff5b4c9-s2tjd   1/1     Running       0          4s
+jensen-iot-api-576b5987d5-5rj2c   1/1     Running       0          45s
+jensen-iot-api-576b5987d5-8nt74   1/1     Terminating   0          51s
+jensen-iot-api-576b5987d5-bqq5h   1/1     Running       0          57s
+
+Waiting for deployment "jensen-iot-api" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "jensen-iot-api" rollout to finish: 1 old replicas are pending termination...
+deployment "jensen-iot-api" successfully rolled out
+
+$ kubectl get pods
+NAME                              READY   STATUS        RESTARTS   AGE
+jensen-iot-api-566ff5b4c9-7nhfb   1/1     Running       0          6s
+jensen-iot-api-566ff5b4c9-dxndq   1/1     Running       0          12s
+jensen-iot-api-566ff5b4c9-s2tjd   1/1     Running       0          15s
+jensen-iot-api-576b5987d5-5rj2c   1/1     Terminating   0          56s
+jensen-iot-api-576b5987d5-8nt74   1/1     Terminating   0          62s
+jensen-iot-api-576b5987d5-bqq5h   1/1     Terminating   0          68s
+
+Alla Pods kör nu lab-v2:
+jensen-iot-api-566ff5b4c9-7nhfb  jensen-iot-api:lab-v2
+jensen-iot-api-566ff5b4c9-dxndq  jensen-iot-api:lab-v2
+jensen-iot-api-566ff5b4c9-s2tjd  jensen-iot-api:lab-v2
+jensen-iot-api-576b5987d5-5rj2c  jensen-iot-api:lab
+jensen-iot-api-576b5987d5-8nt74  jensen-iot-api:lab
+jensen-iot-api-576b5987d5-bqq5h  jensen-iot-api:lab
+
+(De tre lab-Poddarna i listan ovan är Terminating och räknas inte.)
+
+$ kubectl rollout history deployment/jensen-iot-api
+deployment.apps/jensen-iot-api 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+3         <none>
+
+
+--------------------------------------------------------------
+Rollback till föregående version
+--------------------------------------------------------------
+$ kubectl rollout undo deployment/jensen-iot-api
+Warning: resource deployments/jensen-iot-api was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.
+deployment.apps/jensen-iot-api rolled back
+
+Waiting for deployment "jensen-iot-api" rollout to finish: 0 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "jensen-iot-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "jensen-iot-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "jensen-iot-api" rollout to finish: 1 old replicas are pending termination...
+deployment "jensen-iot-api" successfully rolled out
+
+$ kubectl get pods
+NAME                              READY   STATUS        RESTARTS   AGE
+jensen-iot-api-566ff5b4c9-7nhfb   1/1     Terminating   0          37s
+jensen-iot-api-566ff5b4c9-dxndq   1/1     Terminating   0          43s
+jensen-iot-api-566ff5b4c9-s2tjd   1/1     Terminating   0          46s
+jensen-iot-api-576b5987d5-gc98g   1/1     Running       0          18s
+jensen-iot-api-576b5987d5-qm56g   1/1     Running       0          6s
+jensen-iot-api-576b5987d5-vpr8j   1/1     Running       0          12s
+
+Tillbaka på lab:
+jensen-iot-api:lab  APP_VERSION=lab
+
+$ kubectl rollout history deployment/jensen-iot-api
+deployment.apps/jensen-iot-api 
+REVISION  CHANGE-CAUSE
+1         <none>
+3         <none>
+4         <none>
+
+
+--------------------------------------------------------------
+Trafik under hela utrullningen och rollbacken
+--------------------------------------------------------------
+En separat Pod anropade Servicen två gånger per sekund under hela
+förloppet, från insidan av klustret.
+
+SUMMARY ok=200 fail=0
+
+Fördelning över versioner under förloppet:
+ 139 "version":"lab"
+  61 "version":"lab-v2"
+
+Antal misslyckade anrop:
+0
+
+Inget anrop tappades. Att maxUnavailable är 0 och att readinessProbe
+håller nya Pods utanför Servicen tills de svarar är det som gör
+versionsbytet omärkbart för den som anropar.

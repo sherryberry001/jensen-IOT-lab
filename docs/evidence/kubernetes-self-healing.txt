@@ -1,0 +1,53 @@
+==============================================================
+ Self-healing: Kubernetes ersätter en raderad Pod
+==============================================================
+
+Utgångsläge, tre repliker enligt Deploymentens spec:
+$ kubectl get pods
+NAME                              READY   STATUS    RESTARTS   AGE
+jensen-iot-api-7b9fbb47d4-g9qxd   1/1     Running   0          5m33s
+jensen-iot-api-7b9fbb47d4-jzt8z   1/1     Running   0          65s
+jensen-iot-api-7b9fbb47d4-nlbgg   1/1     Running   0          5m33s
+
+$ kubectl delete pod jensen-iot-api-7b9fbb47d4-g9qxd --wait=false
+pod "jensen-iot-api-7b9fbb47d4-g9qxd" deleted from default namespace
+
+En sekund senare. Den raderade Poden är Terminating, och ReplicaSet:et
+har redan skapat en ersättare som håller på att starta:
+$ kubectl get pods
+NAME                              READY   STATUS              RESTARTS   AGE
+jensen-iot-api-7b9fbb47d4-g9qxd   1/1     Terminating         0          5m34s
+jensen-iot-api-7b9fbb47d4-jzt8z   1/1     Running             0          66s
+jensen-iot-api-7b9fbb47d4-nlbgg   1/1     Running             0          5m34s
+jensen-iot-api-7b9fbb47d4-wxc9t   0/1     ContainerCreating   0          1s
+
+Några sekunder senare, när ersättaren blivit Ready:
+$ kubectl get pods
+NAME                              READY   STATUS        RESTARTS   AGE
+jensen-iot-api-7b9fbb47d4-g9qxd   1/1     Terminating   0          5m41s
+jensen-iot-api-7b9fbb47d4-jzt8z   1/1     Running       0          73s
+jensen-iot-api-7b9fbb47d4-nlbgg   1/1     Running       0          5m41s
+jensen-iot-api-7b9fbb47d4-wxc9t   1/1     Running       0          8s
+
+--------------------------------------------------------------
+Observation
+--------------------------------------------------------------
+Den raderade Poden jensen-iot-api-7b9fbb47d4-g9qxd
+kom inte tillbaka. Kubernetes lagade inte den Poden, utan skapade en ny
+med ett nytt namn. Det som hålls vid liv är antalet repliker, inte den
+enskilda Poden.
+
+Ersättaren skapades direkt när raderingen begärdes, alltså medan den
+gamla Poden fortfarande stängde ner. Kapaciteten hann därför aldrig gå
+under tre fungerande Pods.
+
+$ kubectl get deployment jensen-iot-api
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE
+jensen-iot-api   3/3     3            3           5m41s
+
+$ kubectl get replicaset
+NAME                        DESIRED   CURRENT   READY   AGE
+jensen-iot-api-7b9fbb47d4   3         3         3       5m41s
+
+Kedjan är Deployment -> ReplicaSet -> Pods. Deploymenten beskriver önskat
+läge, ReplicaSet:et räknar Pods och skapar nya när det saknas några.
