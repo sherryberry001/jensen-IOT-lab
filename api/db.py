@@ -1,5 +1,6 @@
 import os
 from contextlib import contextmanager
+from datetime import timezone
 from decimal import Decimal
 import psycopg2
 import psycopg2.extras
@@ -22,6 +23,11 @@ def get_connection():
         dbname=os.getenv("DB_NAME", "jensen_iot"),
         user=os.getenv("DB_USER", "student"),
         password=os.getenv("DB_PASSWORD", "student"),
+        # created_at är TIMESTAMP utan tidszon och får sitt värde av NOW(),
+        # som utgår från sessionens tidszon. Genom att låsa sessionen till UTC
+        # blir det entydigt vad de lagrade tiderna betyder, oavsett vilken
+        # tidszon databascontainern eller värddatorn råkar ha.
+        options="-c timezone=UTC",
     )
 
 
@@ -45,6 +51,22 @@ def _cursor(dict_rows=True):
         conn.close()
 
 
+def _as_utc_iso(value):
+    """Gör en tidsstämpel entydig innan den lämnar API:t.
+
+    Databaskolumnen är TIMESTAMP utan tidszon, så psycopg2 ger tillbaka ett
+    naivt datetime. Skickas det vidare som "2026-09-10T11:28:29" tolkar en
+    webbläsare det som lokal tid, och en klient i Sverige räknar då fel med två
+    timmar. Genom att märka värdet som UTC blir det "...+00:00", vilket alla
+    klienter tolkar likadant.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
+
 def _json_ready(row):
     if row is None:
         return None
@@ -53,7 +75,7 @@ def _json_ready(row):
         if isinstance(result.get(key), Decimal):
             result[key] = float(result[key])
     if result.get("created_at") is not None:
-        result["created_at"] = result["created_at"].isoformat()
+        result["created_at"] = _as_utc_iso(result["created_at"])
     return result
 
 
@@ -158,7 +180,7 @@ def _clean(row):
         if isinstance(value, Decimal):
             out[key] = float(value)
         elif key.endswith("_at") and value is not None:
-            out[key] = value.isoformat()
+            out[key] = _as_utc_iso(value)
         else:
             out[key] = value
     return out
@@ -240,6 +262,11 @@ def get_devices_with_status(threshold_seconds=ONLINE_THRESHOLD_SECONDS):
             d.device_type,
             s.last_seen,
             COALESCE(s.measurement_count, 0) AS measurement_count,
+            -- Åldern räknas ut av databasen. Då slipper klienten jämföra sin
+            -- egen klocka med serverns, vilket annars blir fel så fort de går
+            -- isär eller ligger i olika tidszoner.
+            ROUND(EXTRACT(EPOCH FROM (NOW() - s.last_seen)))::int
+                AS seconds_since_last_seen,
             CASE
                 WHEN s.last_seen >= NOW() - make_interval(secs => %s) THEN 'online'
                 ELSE 'offline'
@@ -259,6 +286,5 @@ def get_devices_with_status(threshold_seconds=ONLINE_THRESHOLD_SECONDS):
         rows = [dict(row) for row in cur.fetchall()]
 
     for row in rows:
-        if row.get("last_seen") is not None:
-            row["last_seen"] = row["last_seen"].isoformat()
+        row["last_seen"] = _as_utc_iso(row.get("last_seen"))
     return rows

@@ -239,11 +239,14 @@ function clock(iso) {
   return isNaN(d) ? "-" : d.toLocaleTimeString("sv-SE");
 }
 
-function secondsAgo(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d)) return null;
-  return Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+function since(seconds) {
+  // Åldern kommer färdigräknad från API:t, som i sin tur låter databasen
+  // räkna. Att räkna här i webbläsaren hade jämfört klientens klocka med
+  // serverns tidsstämplar, vilket blir fel så fort de går isär.
+  if (seconds === null || seconds === undefined) return "aldrig";
+  if (seconds < 60) return seconds + " s sedan";
+  if (seconds < 3600) return Math.floor(seconds / 60) + " min sedan";
+  return Math.floor(seconds / 3600) + " h sedan";
 }
 
 function statCard(label, value, unit) {
@@ -278,12 +281,11 @@ function renderSensors(stats, status) {
 
   document.getElementById("sensors").innerHTML = status.devices.map(device => {
     const extra = byDevice[device.device_id];
-    const ago = secondsAgo(device.last_seen);
     const isOnline = device.status === "online";
 
     const rows = [
       ["Plats", text(device.location)],
-      ["Senast hörd", ago === null ? "aldrig" : ago + " s sedan"],
+      ["Senast hörd", since(device.seconds_since_last_seen)],
       ["Mätningar", device.measurement_count],
       ["Medeltemp", extra && extra.avg_temperature !== null ? extra.avg_temperature + " °C" : "-"]
     ];

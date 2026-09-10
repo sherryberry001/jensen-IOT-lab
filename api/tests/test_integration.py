@@ -7,6 +7,8 @@ kedjan som guidens manuella kontroller går igenom för hand, automatiserad så
 att den körs vid varje push.
 """
 
+from datetime import datetime, timezone
+
 from conftest import forget_cached_latest, requires_database, requires_redis
 
 import cache
@@ -225,6 +227,39 @@ def test_device_status_is_online_right_after_a_measurement(client, measurement_p
     devices = {row["device_id"]: row for row in response.get_json()["devices"]}
     assert devices[device_id]["status"] == "online"
     assert devices[device_id]["measurement_count"] == 1
+
+
+@requires_database
+def test_timestamps_carry_an_explicit_timezone(client, measurement_payload):
+    """Regressionstest för en tidszonsbugg.
+
+    created_at är TIMESTAMP utan tidszon i databasen. Skickades värdet vidare
+    naivt tolkade webbläsaren det som lokal tid, och dashboarden visade att en
+    sensor senast hörts av för två timmar sedan trots att den var online.
+    """
+    response = client.post("/measurements", json=measurement_payload)
+    created_at = response.get_json()["measurement"]["created_at"]
+
+    assert created_at.endswith("+00:00"), created_at
+
+    parsed = datetime.fromisoformat(created_at)
+    assert parsed.tzinfo is not None
+    # Tiden ska ligga nära nu, inte timmar bort.
+    assert abs((datetime.now(timezone.utc) - parsed).total_seconds()) < 60
+
+
+@requires_database
+def test_age_is_calculated_by_the_server(client, measurement_payload):
+    """Åldern räknas i databasen, så klientens klocka spelar ingen roll."""
+    device_id = measurement_payload["deviceId"]
+    client.post("/measurements", json=measurement_payload)
+
+    devices = {
+        row["device_id"]: row
+        for row in client.get("/devices/status").get_json()["devices"]
+    }
+
+    assert devices[device_id]["seconds_since_last_seen"] < 10
 
 
 @requires_database
