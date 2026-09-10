@@ -1,0 +1,124 @@
+name: CI
+
+# Körs vid varje push och vid pull request, så att fel upptäcks direkt och
+# inte först när någon annan hämtar hem koden.
+on: [push, pull_request]
+
+jobs:
+  test-and-build:
+    name: Tester och image-bygge
+    runs-on: ubuntu-latest
+
+    # Integrationstesterna behöver en riktig databas och en riktig cache. Utan
+    # dem hade de hoppats över och CI hade blivit grön utan att ha testat något
+    # av det som faktiskt går sönder i praktiken. Tjänsterna körs som
+    # service-containrar med samma images som i docker-compose.yml.
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_DB: jensen_iot
+          POSTGRES_USER: student
+          POSTGRES_PASSWORD: student
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U student -d jensen_iot"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # Tjänsterna nås på localhost eftersom jobbet kör direkt på runnern och
+      # portarna är publicerade dit.
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: jensen_iot
+      DB_USER: student
+      DB_PASSWORD: student
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+
+    steps:
+      - name: Hämta koden
+        uses: actions/checkout@v4
+
+      - name: Installera Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - name: Installera beroenden
+        run: pip install -r api/requirements.txt
+
+      - name: Skapa databasschemat
+        # Samma init.sql som PostgreSQL kör automatiskt i Docker Compose. Här
+        # måste den köras explicit, eftersom service-containrar inte tar emot
+        # monterade filer. Schemat läggs på via psycopg2 i stället för psql, så
+        # att steget inte beror på vilka klientverktyg runnern råkar ha.
+        run: |
+          python - <<'PY'
+          import pathlib
+          import psycopg2
+
+          connection = psycopg2.connect(
+              host="localhost",
+              dbname="jensen_iot",
+              user="student",
+              password="student",
+          )
+          connection.autocommit = True
+          with connection.cursor() as cur:
+              cur.execute(pathlib.Path("database/init.sql").read_text())
+          connection.close()
+          print("Schemat är skapat och sensorerna är inlagda")
+          PY
+
+      - name: Kör testerna
+        run: python -m pytest -v
+        working-directory: api
+
+      - name: Bygg API:ts Docker image
+        run: docker build -t jensen-iot-api:ci ./api
+
+      - name: Rökprov av den byggda imagen
+        # Att imagen byggde säger inte att den startar. Det här steget kör
+        # containern mot samma databas och kontrollerar att API:t svarar.
+        run: |
+          docker run -d --name api-smoke --network host \
+            -e DB_HOST=localhost \
+            -e REDIS_HOST=localhost \
+            -e APP_VERSION=ci \
+            jensen-iot-api:ci
+
+          for attempt in $(seq 1 20); do
+            if curl -sf http://localhost:5000/health > /dev/null; then
+              echo "API:t svarar efter $attempt försök"
+              echo "--- /health ---"
+              curl -s http://localhost:5000/health
+              echo
+              echo "--- /devices ---"
+              curl -s http://localhost:5000/devices
+              echo
+              docker rm -f api-smoke > /dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "API:t svarade inte inom 20 sekunder"
+          docker logs api-smoke
+          docker rm -f api-smoke > /dev/null
+          exit 1
