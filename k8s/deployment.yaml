@@ -2,11 +2,30 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: jensen-iot-api
+  labels:
+    app: jensen-iot-api
 spec:
+  # Deploymenten är den som håller antalet Pods uppe. Raderas en Pod skapar
+  # ReplicaSet:et en ny tills tre stycken finns igen. Det är self-healing.
   replicas: 3
+
+  # Hur många gamla ReplicaSets som sparas. De är det som gör en rollback
+  # möjlig: kubectl rollout undo pekar tillbaka på föregående version.
+  revisionHistoryLimit: 5
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # En ny Pod får startas utöver de tre, och högst en av de gamla får vara
+      # otillgänglig åt gången. Under en uppdatering finns alltså alltid minst
+      # tre Pods som kan ta trafik, så bytet av version sker utan avbrott.
+      maxSurge: 1
+      maxUnavailable: 0
+
   selector:
     matchLabels:
       app: jensen-iot-api
+
   template:
     metadata:
       labels:
@@ -15,15 +34,44 @@ spec:
       containers:
         - name: api
           image: jensen-iot-api:lab
+          # Imagen byggs lokalt in i Minikube och finns inte i något register.
+          # IfNotPresent gör att Kubernetes använder den lokala i stället för
+          # att försöka hämta den och fastna i ErrImagePull.
           imagePullPolicy: IfNotPresent
+
           ports:
             - containerPort: 5000
+
           env:
             - name: APP_VERSION
               value: "lab"
+
+          # Readiness styr om Poden får ta emot trafik via Servicen. En Pod som
+          # startar upp hålls utanför tills den svarar på /health.
           readinessProbe:
             httpGet:
               path: /health
               port: 5000
             initialDelaySeconds: 2
             periodSeconds: 5
+
+          # Liveness styr om Poden ska startas om. Skillnaden mot readiness är
+          # att en Pod som fastnat plockas ur trafik av readiness, men startas
+          # om av liveness.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+          # requests är vad schemaläggaren reserverar, limits är taket. Utan
+          # dem kan en Pod äta upp hela noden.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
