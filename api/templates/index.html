@@ -2,29 +2,441 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Jensen IoT Platform</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 40px; background:#f5f7fb; color:#111827; }
-    .card { background:white; padding:20px; border-radius:12px; max-width:800px; box-shadow:0 5px 20px rgba(0,0,0,.08); }
-    code { background:#eef2f7; padding:2px 5px; border-radius:5px; }
+    :root {
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --online: #16a34a;
+      --offline: #94a3b8;
+      --warn: #b45309;
+      --warn-bg: #fef3c7;
+      --shadow: 0 1px 3px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .06);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1120;
+        --surface: #111c33;
+        --border: #1e293b;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #60a5fa;
+        --online: #4ade80;
+        --offline: #64748b;
+        --warn: #fbbf24;
+        --warn-bg: #3f2d0a;
+        --shadow: none;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 32px 20px 60px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      line-height: 1.5;
+    }
+
+    .wrap { max-width: 1080px; margin: 0 auto; }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 12px 20px;
+      margin-bottom: 4px;
+    }
+
+    h1 { font-size: 1.5rem; margin: 0; letter-spacing: -.01em; }
+
+    .meta {
+      font-size: .8rem;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .sub { color: var(--muted); font-size: .9rem; margin: 0 0 24px; }
+
+    .banner {
+      display: none;
+      background: var(--warn-bg);
+      color: var(--warn);
+      border: 1px solid currentColor;
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 24px;
+      font-size: .9rem;
+    }
+    .banner.show { display: block; }
+
+    h2 {
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--muted);
+      margin: 32px 0 12px;
+      font-weight: 600;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .stat-label { font-size: .78rem; color: var(--muted); }
+    .stat-value { font-size: 1.7rem; font-weight: 600; letter-spacing: -.02em; margin-top: 2px; }
+    .stat-unit { font-size: .95rem; font-weight: 500; color: var(--muted); }
+
+    .sensor-head { display: flex; align-items: center; gap: 8px; }
+
+    .dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      background: var(--offline);
+      flex: none;
+    }
+    .dot.online { background: var(--online); }
+
+    .sensor-name { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    .sensor-status {
+      margin-left: auto;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+    }
+
+    .sensor-rows { margin-top: 12px; font-size: .85rem; }
+
+    .sensor-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      color: var(--muted);
+    }
+    .sensor-row span:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
+
+    .chart-card { padding: 18px; }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 10px; font-size: .8rem; color: var(--muted); }
+    .chart-legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+    svg { display: block; width: 100%; height: auto; }
+
+    .table-scroll { overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+
+    th {
+      text-align: left;
+      font-weight: 500;
+      color: var(--muted);
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      padding: 0 12px 8px 0;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 7px 12px 7px 0;
+      border-top: 1px solid var(--border);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    td.id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+
+    footer {
+      margin-top: 36px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      font-size: .82rem;
+      color: var(--muted);
+    }
+
+    footer code {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 1px 6px;
+      border-radius: 5px;
+      font-size: .95em;
+    }
+
+    footer a { color: var(--accent); }
+
+    .empty { color: var(--muted); font-size: .88rem; padding: 10px 0; }
   </style>
 </head>
 <body>
-  <div class="card">
+<div class="wrap">
+
+  <header>
     <h1>Jensen IoT Platform</h1>
-    <p>API:t kör.</p>
-    <p><b>Version:</b> {{ version }}</p>
-    <p><b>Container / Pod:</b> {{ pod }}</p>
+    <span class="meta">version {{ version }} &middot; pod {{ pod }}</span>
+  </header>
+  <p class="sub">Livevy över de tre simulerade sensorerna. Uppdateras var femte sekund.</p>
 
-    <h2>Testa</h2>
-    <ul>
-      <li><code>/health</code></li>
-      <li><code>/devices</code></li>
-      <li><code>/measurements</code></li>
-      <li><code>/devices/sensor-001/latest</code></li>
-    </ul>
+  <div class="banner" id="banner"></div>
 
-    <p>Öppna <code>docker compose logs -f simulator</code> för att se sensorerna skicka data.</p>
+  <h2>Översikt</h2>
+  <div class="grid" id="stats"></div>
+
+  <h2>Sensorer</h2>
+  <div class="grid" id="sensors"></div>
+
+  <h2>Temperatur, senaste mätningarna</h2>
+  <div class="card chart-card">
+    <div class="chart-legend" id="legend"></div>
+    <div id="chart"></div>
   </div>
+
+  <h2>Senaste mätningarna</h2>
+  <div class="card table-scroll" id="latest"></div>
+
+  <footer>
+    Endpoints:
+    <code>/health</code>
+    <code>/devices</code>
+    <code>/devices/status</code>
+    <code>/measurements</code>
+    <code>/devices/sensor-001/latest</code>
+    <code>/statistics</code>
+    <br><br>
+    Följ sensorerna i terminalen med <code>docker compose logs -f simulator</code>.
+  </footer>
+
+</div>
+
+<script>
+const SERIES_COLORS = ["#2563eb", "#0d9488", "#d97706"];
+const REFRESH_MS = 5000;
+
+function text(value, fallback) {
+  return (value === null || value === undefined) ? (fallback || "-") : value;
+}
+
+function clock(iso) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  return isNaN(d) ? "-" : d.toLocaleTimeString("sv-SE");
+}
+
+function secondsAgo(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d)) return null;
+  return Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+}
+
+function statCard(label, value, unit) {
+  const suffix = unit ? ' <span class="stat-unit">' + unit + "</span>" : "";
+  return '<div class="card"><div class="stat-label">' + label + "</div>" +
+         '<div class="stat-value">' + value + suffix + "</div></div>";
+}
+
+function renderStats(stats, status) {
+  const totals = stats ? stats.totals : null;
+  const online = status ? status.devices.filter(d => d.status === "online").length : 0;
+  const total = status ? status.devices.length : 0;
+
+  document.getElementById("stats").innerHTML = [
+    statCard("Mätningar totalt", totals ? totals.measurement_count : "-"),
+    statCard("Medeltemperatur", totals && totals.avg_temperature !== null ? totals.avg_temperature : "-", "&deg;C"),
+    statCard("Senaste 24 timmarna", totals ? totals.measurements_last_24h : "-"),
+    statCard("Sensorer online", total ? online + " / " + total : "-")
+  ].join("");
+}
+
+function renderSensors(stats, status) {
+  if (!status) {
+    document.getElementById("sensors").innerHTML = '<p class="empty">Ingen sensordata tillgänglig.</p>';
+    return;
+  }
+
+  const byDevice = {};
+  if (stats) {
+    stats.perDevice.forEach(row => { byDevice[row.device_id] = row; });
+  }
+
+  document.getElementById("sensors").innerHTML = status.devices.map(device => {
+    const extra = byDevice[device.device_id];
+    const ago = secondsAgo(device.last_seen);
+    const isOnline = device.status === "online";
+
+    const rows = [
+      ["Plats", text(device.location)],
+      ["Senast hörd", ago === null ? "aldrig" : ago + " s sedan"],
+      ["Mätningar", device.measurement_count],
+      ["Medeltemp", extra && extra.avg_temperature !== null ? extra.avg_temperature + " °C" : "-"]
+    ];
+
+    return '<div class="card">' +
+      '<div class="sensor-head">' +
+        '<span class="dot' + (isOnline ? " online" : "") + '"></span>' +
+        '<span class="sensor-name">' + device.device_id + "</span>" +
+        '<span class="sensor-status">' + device.status + "</span>" +
+      "</div>" +
+      '<div class="sensor-rows">' +
+        rows.map(r => '<div class="sensor-row"><span>' + r[0] + "</span><span>" + r[1] + "</span></div>").join("") +
+      "</div></div>";
+  }).join("");
+}
+
+function renderChart(measurements) {
+  const chart = document.getElementById("chart");
+  const legend = document.getElementById("legend");
+
+  if (!measurements || !measurements.length) {
+    chart.innerHTML = '<p class="empty">Inga mätningar att visa ännu.</p>';
+    legend.innerHTML = "";
+    return;
+  }
+
+  // measurements kommer nyast först. Vänd på listan så att tiden går åt höger.
+  const points = measurements.slice(0, 60).reverse();
+  const devices = [...new Set(points.map(m => m.device_id))].sort();
+
+  const temps = points.map(m => m.temperature);
+  let min = Math.min(...temps);
+  let max = Math.max(...temps);
+  if (max - min < 1) { min -= 0.5; max += 0.5; }
+  const pad = (max - min) * 0.15;
+  min -= pad;
+  max += pad;
+
+  const W = 720, H = 220, L = 42, R = 12, T = 12, B = 26;
+  const plotW = W - L - R;
+  const plotH = H - T - B;
+
+  const scaleY = v => T + plotH - ((v - min) / (max - min)) * plotH;
+
+  let svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Temperaturkurva per sensor">';
+
+  // Vågräta hjälplinjer med gradtal.
+  for (let i = 0; i <= 4; i++) {
+    const value = min + (max - min) * (i / 4);
+    const y = scaleY(value);
+    svg += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y +
+           '" stroke="currentColor" stroke-opacity=".12" stroke-width="1"/>';
+    svg += '<text x="' + (L - 8) + '" y="' + (y + 4) +
+           '" text-anchor="end" font-size="11" fill="currentColor" opacity=".55">' +
+           value.toFixed(1) + "</text>";
+  }
+
+  devices.forEach((deviceId, index) => {
+    const series = points.filter(m => m.device_id === deviceId);
+    if (!series.length) return;
+
+    const step = series.length > 1 ? plotW / (series.length - 1) : 0;
+    const path = series.map((m, i) => {
+      const x = L + (series.length > 1 ? i * step : plotW / 2);
+      return (i === 0 ? "M" : "L") + x.toFixed(1) + " " + scaleY(m.temperature).toFixed(1);
+    }).join(" ");
+
+    svg += '<path d="' + path + '" fill="none" stroke="' + SERIES_COLORS[index % SERIES_COLORS.length] +
+           '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+  });
+
+  svg += '<text x="' + L + '" y="' + (H - 6) + '" font-size="11" fill="currentColor" opacity=".55">' +
+         clock(points[0].created_at) + "</text>";
+  svg += '<text x="' + (W - R) + '" y="' + (H - 6) +
+         '" text-anchor="end" font-size="11" fill="currentColor" opacity=".55">' +
+         clock(points[points.length - 1].created_at) + "</text>";
+  svg += "</svg>";
+
+  chart.innerHTML = svg;
+  legend.innerHTML = devices.map((deviceId, index) =>
+    '<span><i style="background:' + SERIES_COLORS[index % SERIES_COLORS.length] + '"></i>' + deviceId + "</span>"
+  ).join("");
+}
+
+function renderLatest(measurements) {
+  const target = document.getElementById("latest");
+
+  if (!measurements || !measurements.length) {
+    target.innerHTML = '<p class="empty">Inga mätningar ännu.</p>';
+    return;
+  }
+
+  const rows = measurements.slice(0, 12).map(m =>
+    "<tr>" +
+      '<td class="id">' + m.id + "</td>" +
+      "<td>" + m.device_id + "</td>" +
+      "<td>" + m.temperature + " °C</td>" +
+      "<td>" + text(m.humidity) + " %</td>" +
+      "<td>" + text(m.battery) + " %</td>" +
+      "<td>" + clock(m.created_at) + "</td>" +
+    "</tr>"
+  ).join("");
+
+  target.innerHTML =
+    "<table><thead><tr>" +
+      "<th>Id</th><th>Sensor</th><th>Temp</th><th>Fukt</th><th>Batteri</th><th>Tid</th>" +
+    "</tr></thead><tbody>" + rows + "</tbody></table>";
+}
+
+function showBanner(message) {
+  const banner = document.getElementById("banner");
+  if (message) {
+    banner.textContent = message;
+    banner.classList.add("show");
+  } else {
+    banner.classList.remove("show");
+  }
+}
+
+async function getJson(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) throw new Error(path + " svarade " + response.status);
+  return response.json();
+}
+
+async function refresh() {
+  // Endpointerna hämtas var för sig med allSettled, så att en enskild
+  // trasig del inte tömmer hela sidan.
+  const [stats, status, measurements] = await Promise.allSettled([
+    getJson("/statistics"),
+    getJson("/devices/status"),
+    getJson("/measurements")
+  ]);
+
+  const value = result => result.status === "fulfilled" ? result.value : null;
+
+  if (!value(stats) && !value(status) && !value(measurements)) {
+    // Så ser det ut i Kubernetes-demon: bara API:t är utrullat, utan
+    // PostgreSQL och Redis. Startsidan och /health fungerar ändå.
+    showBanner("Ingen kontakt med databasen. API:t svarar, men PostgreSQL och Redis " +
+               "nås inte. Så ser det ut i Kubernetes-demon, där bara API:t är utrullat.");
+  } else {
+    showBanner(null);
+  }
+
+  renderStats(value(stats), value(status));
+  renderSensors(value(stats), value(status));
+  renderChart(value(measurements));
+  renderLatest(value(measurements));
+}
+
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
 </body>
 </html>
