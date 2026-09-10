@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1130" viewBox="0 0 1400 1130" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0d9488"/>
+    </marker>
+  </defs>
+
+  <rect width="1400" height="1130" fill="#ffffff"/>
+
+  <text x="46" y="46" font-size="25" font-weight="700" fill="#0f172a">Jensen IoT Platform</text>
+  <text x="46" y="70" font-size="14.5" fill="#64748b">Tre simulerade sensorer skickar mätvärden till ett REST API. Historiken lagras i PostgreSQL, senaste värdet cachas i Redis.</text>
+
+  <!-- ==================== VY 1: LOKAL KÖRMILJÖ ==================== -->
+  <text x="46" y="120" font-size="12.5" font-weight="700" fill="#64748b" letter-spacing="1.2">VY 1 — LOKAL KÖRMILJÖ</text>
+
+  <!-- Användare (utanför Compose, kör i webbläsaren på värddatorn) -->
+  <rect x="530" y="140" width="270" height="66" rx="10" fill="#ffffff" stroke="#475569" stroke-width="2"/>
+  <text x="665" y="168" font-size="15.5" font-weight="700" fill="#0f172a" text-anchor="middle">Användare</text>
+  <text x="665" y="190" font-size="13" fill="#64748b" text-anchor="middle">webbläsare på värddatorn</text>
+
+  <!-- Docker Compose-ram -->
+  <rect x="46" y="250" width="1308" height="330" rx="14" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="9 6"/>
+  <text x="66" y="276" font-size="13" font-weight="700" fill="#475569">Docker Compose — lokal körmiljö (fyra containrar på ett gemensamt nätverk)</text>
+
+  <!-- Simulator med tre sensorer -->
+  <rect x="76" y="300" width="256" height="248" rx="11" fill="#ffffff" stroke="#0d9488" stroke-width="2"/>
+  <text x="204" y="328" font-size="15" font-weight="700" fill="#0d9488" text-anchor="middle">simulator</text>
+  <text x="204" y="348" font-size="12.5" fill="#64748b" text-anchor="middle">skickar var 5:e sekund</text>
+
+  <rect x="98" y="362" width="212" height="46" rx="8" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.5"/>
+  <text x="118" y="382" font-size="13.5" font-weight="600" fill="#0f172a">sensor-001</text>
+  <text x="118" y="399" font-size="11.5" fill="#64748b">Factory A · temp, fukt, batteri</text>
+
+  <rect x="98" y="418" width="212" height="46" rx="8" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.5"/>
+  <text x="118" y="438" font-size="13.5" font-weight="600" fill="#0f172a">sensor-002</text>
+  <text x="118" y="455" font-size="11.5" fill="#64748b">Factory B · temp, fukt, batteri</text>
+
+  <rect x="98" y="474" width="212" height="52" rx="8" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="118" y="494" font-size="13.5" font-weight="600" fill="#0f172a">sensor-003</text>
+  <text x="118" y="511" font-size="11.5" fill="#b45309">Factory C · skickar ibland trasig data</text>
+
+  <!-- REST API -->
+  <rect x="520" y="330" width="290" height="170" rx="11" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"/>
+  <text x="665" y="360" font-size="16.5" font-weight="700" fill="#2563eb" text-anchor="middle">REST API</text>
+  <text x="665" y="380" font-size="12.5" fill="#64748b" text-anchor="middle">Flask · Python 3.12 · port 5000</text>
+  <line x1="540" y1="394" x2="790" y2="394" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="540" y="415" font-size="12.5" fill="#0f172a">1. validering (typ och mätområde)</text>
+  <text x="540" y="435" font-size="12.5" fill="#0f172a">2. finns sensorn?  annars 400</text>
+  <text x="540" y="455" font-size="12.5" fill="#0f172a">3. INSERT i PostgreSQL</text>
+  <text x="540" y="475" font-size="12.5" fill="#0f172a">4. uppdatera latest-cache</text>
+
+  <!-- PostgreSQL -->
+  <rect x="1010" y="300" width="310" height="112" rx="11" fill="#ffffff" stroke="#336791" stroke-width="2.5"/>
+  <text x="1165" y="330" font-size="16" font-weight="700" fill="#336791" text-anchor="middle">PostgreSQL</text>
+  <text x="1165" y="352" font-size="12.5" fill="#0f172a" text-anchor="middle">all historik · sanningen</text>
+  <text x="1165" y="372" font-size="12" fill="#64748b" text-anchor="middle">devices, measurements</text>
+  <text x="1165" y="394" font-size="12" font-weight="600" fill="#336791" text-anchor="middle">volym postgres_data — persistent</text>
+
+  <!-- Redis -->
+  <rect x="1010" y="440" width="310" height="108" rx="11" fill="#ffffff" stroke="#c0392b" stroke-width="2.5"/>
+  <text x="1165" y="470" font-size="16" font-weight="700" fill="#c0392b" text-anchor="middle">Redis</text>
+  <text x="1165" y="492" font-size="12.5" fill="#0f172a" text-anchor="middle">bara senaste mätningen per sensor</text>
+  <text x="1165" y="512" font-size="12" fill="#64748b" text-anchor="middle">latest:&lt;deviceId&gt; · TTL 300 s</text>
+  <text x="1165" y="533" font-size="12" font-weight="600" fill="#c0392b" text-anchor="middle">ingen volym — får försvinna</text>
+
+  <!-- Pil: användare -> API -->
+  <path d="M 665 206 L 665 330" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <rect x="678" y="212" width="330" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="690" y="233" font-size="12.5" fill="#0f172a">HTTP GET / · /devices/status · /statistics</text>
+
+  <!-- Pil: sensorer -> API (write-heavy) -->
+  <path d="M 332 424 L 520 424" stroke="#0d9488" stroke-width="3" fill="none" marker-end="url(#arrowTeal)"/>
+  <rect x="342" y="372" width="170" height="44" rx="6" fill="#f0fdfa" stroke="#5eead4" stroke-width="1"/>
+  <text x="352" y="389" font-size="12.5" font-weight="600" fill="#0f172a">HTTP POST</text>
+  <text x="352" y="406" font-size="12.5" font-weight="600" fill="#0f172a">/measurements</text>
+  <text x="426" y="447" font-size="12" font-weight="700" fill="#0d9488" text-anchor="middle">write-heavy</text>
+  <text x="426" y="463" font-size="11.5" fill="#64748b" text-anchor="middle">3 skrivningar / 5 s</text>
+
+  <!-- Pil: API -> PostgreSQL -->
+  <path d="M 810 380 L 1010 356" stroke="#336791" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+  <rect x="826" y="300" width="172" height="44" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="836" y="317" font-size="12.5" font-weight="600" fill="#0f172a">SQL INSERT</text>
+  <text x="836" y="334" font-size="12.5" fill="#475569">SELECT historik</text>
+
+  <!-- Pil: API -> Redis -->
+  <path d="M 810 452 L 1010 486" stroke="#c0392b" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+  <rect x="826" y="494" width="172" height="44" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="836" y="511" font-size="12.5" font-weight="600" fill="#0f172a">cache read / write</text>
+  <text x="836" y="528" font-size="12.5" fill="#475569">latest:&lt;deviceId&gt;</text>
+
+  <!-- Cache-aside-förklaring -->
+  <rect x="46" y="596" width="646" height="86" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <text x="66" y="620" font-size="13" font-weight="700" fill="#1e40af">GET /devices/&lt;id&gt;/latest — cache-aside</text>
+  <text x="66" y="642" font-size="12.5" fill="#0f172a">1. läs Redis, träff ger svar direkt   2. miss: läs PostgreSQL och skriv tillbaka</text>
+  <text x="66" y="661" font-size="12.5" fill="#0f172a">Tomt Redis gör lösningen långsammare, inte trasig.</text>
+
+  <rect x="708" y="596" width="646" height="86" rx="10" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="728" y="620" font-size="13" font-weight="700" fill="#475569">Vad ligger var</text>
+  <text x="728" y="642" font-size="12.5" fill="#0f172a">PostgreSQL: varje godkänd mätning, för alltid. Måste överleva omstart.</text>
+  <text x="728" y="661" font-size="12.5" fill="#0f172a">Redis: en kopia av senaste värdet per sensor. Går att slänga när som helst.</text>
+
+  <!-- ==================== VY 2: CI OCH KUBERNETES ==================== -->
+  <line x1="46" y1="716" x2="1354" y2="716" stroke="#e2e8f0" stroke-width="2"/>
+  <text x="46" y="752" font-size="12.5" font-weight="700" fill="#64748b" letter-spacing="1.2">VY 2 — CI-PIPELINE OCH KUBERNETES-DEMO</text>
+
+  <!-- git push -->
+  <rect x="46" y="790" width="180" height="72" rx="10" fill="#ffffff" stroke="#475569" stroke-width="2"/>
+  <text x="136" y="820" font-size="14.5" font-weight="700" fill="#0f172a" text-anchor="middle">git push</text>
+  <text x="136" y="841" font-size="12" fill="#64748b" text-anchor="middle">till egen fork</text>
+
+  <!-- CI -->
+  <rect x="288" y="768" width="300" height="150" rx="11" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"/>
+  <text x="438" y="796" font-size="15.5" font-weight="700" fill="#7c3aed" text-anchor="middle">CI-pipeline</text>
+  <text x="438" y="815" font-size="12" fill="#64748b" text-anchor="middle">GitHub Actions</text>
+  <line x1="308" y1="828" x2="568" y2="828" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="308" y="849" font-size="12.5" fill="#0f172a">1. installera beroenden</text>
+  <text x="308" y="869" font-size="12.5" fill="#0f172a">2. pytest mot Postgres + Redis</text>
+  <text x="308" y="889" font-size="12.5" fill="#0f172a">3. docker build av API-imagen</text>
+  <text x="308" y="909" font-size="12.5" fill="#0f172a">4. rökprov: startar imagen</text>
+
+  <path d="M 226 826 L 288 826" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Kubernetes-ram -->
+  <rect x="650" y="750" width="704" height="272" rx="14" fill="#f8fafc" stroke="#326ce5" stroke-width="2" stroke-dasharray="9 6"/>
+  <text x="670" y="776" font-size="13" font-weight="700" fill="#326ce5">Kubernetes-demo (Minikube) — bara API:t, utan PostgreSQL och Redis</text>
+
+  <!-- Service -->
+  <rect x="676" y="820" width="196" height="96" rx="10" fill="#ffffff" stroke="#326ce5" stroke-width="2.5"/>
+  <text x="774" y="848" font-size="15" font-weight="700" fill="#326ce5" text-anchor="middle">Service</text>
+  <text x="774" y="868" font-size="12" fill="#64748b" text-anchor="middle">NodePort 30080</text>
+  <text x="774" y="890" font-size="12" fill="#0f172a" text-anchor="middle">en ingång,</text>
+  <text x="774" y="906" font-size="12" fill="#0f172a" text-anchor="middle">väljer Pods på etikett</text>
+
+  <!-- Deployment -->
+  <rect x="932" y="790" width="396" height="206" rx="11" fill="#ffffff" stroke="#326ce5" stroke-width="2"/>
+  <text x="952" y="816" font-size="14.5" font-weight="700" fill="#326ce5">Deployment</text>
+  <text x="952" y="835" font-size="12" fill="#64748b">replicas: 3 · håller antalet uppe (self-healing)</text>
+
+  <rect x="952" y="850" width="356" height="40" rx="7" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <text x="968" y="875" font-size="12.5" font-weight="600" fill="#0f172a">Pod 1 — jensen-iot-api</text>
+
+  <rect x="952" y="898" width="356" height="40" rx="7" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <text x="968" y="923" font-size="12.5" font-weight="600" fill="#0f172a">Pod 2 — jensen-iot-api</text>
+
+  <rect x="952" y="946" width="356" height="40" rx="7" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <text x="968" y="971" font-size="12.5" font-weight="600" fill="#0f172a">Pod 3 — jensen-iot-api</text>
+
+  <!-- Pil: CI -> Kubernetes (image) -->
+  <path d="M 588 843 L 650 843" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="619" y="833" font-size="11" fill="#7c3aed" text-anchor="middle">image</text>
+
+  <!-- Pil: Service -> Pods -->
+  <path d="M 872 868 L 932 868" stroke="#326ce5" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 902 868 L 902 918 L 932 918" stroke="#326ce5" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 902 868 L 902 966 L 932 966" stroke="#326ce5" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Användare -> Service -->
+  <rect x="662" y="1046" width="224" height="62" rx="10" fill="#ffffff" stroke="#475569" stroke-width="2"/>
+  <text x="774" y="1071" font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle">Användare</text>
+  <text x="774" y="1092" font-size="11.5" fill="#64748b" text-anchor="middle">GET /health · startsidan</text>
+  <path d="M 774 1046 L 774 916" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="794" y="1000" font-size="11.5" fill="#64748b">minikube service</text>
+
+  <!-- Not om k8s-demon -->
+  <text x="46" y="960" font-size="12.5" fill="#64748b">Kubernetes-delen är en avgränsad demo av</text>
+  <text x="46" y="979" font-size="12.5" fill="#64748b">drift: tre repliker bakom en Service, med</text>
+  <text x="46" y="998" font-size="12.5" fill="#64748b">self-healing, scaling, rolling update och</text>
+  <text x="46" y="1017" font-size="12.5" fill="#64748b">rollback. Databasen körs bara i Compose.</text>
+</svg>

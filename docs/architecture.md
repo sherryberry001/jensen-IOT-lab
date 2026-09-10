@@ -1,40 +1,83 @@
-# Arkitekturdiagram – obligatorisk leverabel
+# Arkitektur
 
-Skapa ett enkelt diagram över **din färdiga lösning**. Det ska visa komponenterna och hur de kommunicerar; du behöver inte använda UML eller någon annan avancerad standard.
+![Arkitekturdiagram över Jensen IoT Platform](architecture.png)
 
-Diagrammet ska minst visa:
+Diagrammet finns också som [PDF](architecture.pdf) för utskrift, och källan
+ligger i [architecture.svg](architecture.svg) om något behöver ändras.
 
-- en klient eller användare som anropar lösningen
-- de tre simulerade IoT-sensorerna
-- REST API:t
-- PostgreSQL för beständig historik
-- Redis för cache av senaste mätning
-- Docker Compose som lokal körmiljö
-- CI-pipelinen
-- Kubernetes-demon med Deployment, Pod-repliker och Service
+Diagrammet är uppdelat i två vyer eftersom lösningen körs i två olika miljöer
+som inte hänger ihop. Vy 1 är den fullständiga lösningen i Docker Compose. Vy 2
+är CI-pipelinen och den avgränsade Kubernetes-demon, som bara kör API:t.
 
-Använd namngivna pilar som visar viktiga anrop och dataflöden, exempelvis `HTTP POST /measurements`, `SQL` och `cache read/write`. Det ska gå att se vilket flöde som är skrivintensivt (**write-heavy**), vad som cacheas och vad som måste vara persistent.
+## Vy 1, lokal körmiljö
 
-Ett enkelt exempel på detaljnivå:
+Fyra containrar på ett gemensamt Docker-nätverk.
 
-```text
-[3 sensorer] -- HTTP POST /measurements --> [REST API]
-                                              |  \
-                               SQL, historik  |   \ senaste värde
-                                              v    v
-                                        [PostgreSQL] [Redis cache]
+**Simulatorn** kör tre sensorer som var femte sekund skickar temperatur,
+luftfuktighet och batterinivå med `HTTP POST /measurements`. Det är lösningens
+tunga flöde: tre skrivningar var femte sekund, dygnet runt, mot i praktiken
+enstaka läsningar. Sensor-003 skickar med flit trasig data ibland, vilket gör
+att valideringen får något att arbeta med.
 
-[GitHub push] --> [CI: tester + image build]
-[Användare] --> [Kubernetes Service] --> [Deployment: 3 Pod-repliker]
-```
+**REST API:t** gör fyra saker med varje inkommande mätning, i den ordningen:
+validerar typer och mätområden, kontrollerar att sensorn finns, sparar i
+PostgreSQL och uppdaterar cachen. Ordningen spelar roll. Valideringen ligger
+före databasen så att skräp aldrig hinner sparas, och kontrollen av sensorn
+ligger före insert så att ett okänt `deviceId` blir ett tydligt `400` i stället
+för att slå i databasens främmande nyckel och komma ut som ett `500`.
 
-Exemplet är vägledning, inte en mall som måste kopieras. Du kan göra ett sammanhängande diagram eller två tydligt märkta vyer (lokal Docker Compose-miljö och Kubernetes-demo). Gör inte diagrammet mer detaljerat än vad som behövs för att förklara lösningen.
+**PostgreSQL** håller all historik och är lösningens sanning. Databasen skriver
+till den namngivna volymen `postgres_data`, som lever vidare när containern tas
+bort. Det är det enda i lösningen som måste överleva en omstart.
 
-## Så lämnas det i repositoryt
+**Redis** håller en kopia av varje sensors senaste mätning under nyckeln
+`latest:<deviceId>`, med fem minuters TTL. Cachen innehåller ingenting som inte
+redan finns i PostgreSQL, och den har ingen volym. Den får försvinna.
 
-1. Skapa diagrammet i valfritt verktyg, exempelvis diagrams.net, Excalidraw, Visio, PowerPoint eller Figma.
-2. Exportera det som PNG eller PDF till `docs/`.
-3. Länka eller bädda in filen här.
-4. Ersätt denna instruktion med en kort beskrivning av diagrammet och dina viktigaste arkitekturval.
+**Användaren** når API:t utifrån, från en webbläsare på värddatorn. Startsidan
+är en dashboard som hämtar `/statistics`, `/devices/status` och `/measurements`
+och ritar upp dem.
 
-Kontrollera före inlämning att text och pilar går att läsa direkt från GitHub och att diagrammet stämmer med den kod du faktiskt lämnar in.
+### Cache-aside
+
+`GET /devices/<id>/latest` läser Redis först. Vid träff svarar API:t direkt. Vid
+miss läser det PostgreSQL, skriver tillbaka svaret till Redis och svarar. Varje
+`POST` uppdaterar dessutom cachen, så att en läsning strax efter en skrivning
+inte får ett gammalt värde.
+
+Svaret innehåller ett fält `source` som visar om värdet kom från `cache` eller
+`database`. Det fältet gjorde det enkelt att verifiera att cachen faktiskt
+används, och det är samma fält integrationstesterna kontrollerar.
+
+## Vy 2, CI och Kubernetes
+
+**CI-pipelinen** startar vid varje push. Den installerar beroenden, kör
+testerna mot en riktig PostgreSQL och Redis som service-containrar, bygger
+API:ts Docker image och startar den byggda imagen för att kontrollera att den
+går att köra.
+
+**Kubernetes-demon** kör bara API:t, i tre repliker bakom en Service. PostgreSQL
+och Redis ingår inte. Det är därför `/health` och startsidan används i demon och
+inte de databasberoende endpointerna.
+
+## Val som är värda att motivera
+
+**`/health` rör varken databasen eller cachen.** Det är avsiktligt. I
+Kubernetes-demon finns ingen databas, och en hälsokontroll som krävde en sådan
+hade gjort att ingen Pod någonsin blev READY. Beroendenas status rapporteras
+i stället av `/health/dependencies`, som används i Compose-miljön.
+
+**Ett nedsläckt Redis får inte ta ner API:t.** Alla Redis-anrop fångas i
+`cache.py` och översätts till en cache miss. Läsningarna går då till PostgreSQL
+i stället. Lösningen blir långsammare, inte trasig.
+
+**Åldern på en mätning räknas av databasen.** `/devices/status` returnerar
+`seconds_since_last_seen`, uträknat med `EXTRACT(EPOCH FROM (NOW() - last_seen))`.
+Det första försöket räknade i webbläsaren i stället, vilket gav två timmars fel
+eftersom `created_at` saknade tidszon och JavaScript tolkade den som lokal tid.
+Nu låses databassessionen till UTC och API:t märker tidsstämplarna med `+00:00`.
+
+**maxUnavailable är 0 i Deploymenten.** Under en rolling update startas en ny
+Pod innan en gammal tas bort, så antalet fungerande Pods går aldrig under tre.
+Mätningen i [evidence/kubernetes-rolling-update.txt](evidence/kubernetes-rolling-update.txt)
+visar 200 anrop under en utrullning och en rollback, utan ett enda tappat.
