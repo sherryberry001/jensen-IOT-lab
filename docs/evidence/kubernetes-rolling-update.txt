@@ -120,3 +120,11 @@ Antal misslyckade anrop:
 Inget anrop tappades. Att maxUnavailable är 0 och att readinessProbe
 håller nya Pods utanför Servicen tills de svarar är det som gör
 versionsbytet omärkbart för den som anropar.
+
+--------------------------------------------------------------
+Startsidan i Kubernetes
+--------------------------------------------------------------
+Se kubernetes-dashboard.png. I klustret körs bara API:t, utan PostgreSQL
+och Redis. /health och startsidan svarar, medan /statistics ger
+503 database unavailable. Dashboarden visar då en banner i stället för
+att se trasig ut.
