@@ -2,11 +2,13 @@ from flask import Flask, jsonify, request, render_template
 import os
 import socket
 
+import psycopg2
+
 from db import (
     device_exists,
     get_devices,
-    get_measurements,
     get_latest_measurement,
+    get_measurements,
     get_measurements_for_device,
     insert_measurement,
 )
@@ -45,30 +47,38 @@ def measurements():
 
 @app.get("/devices/<device_id>/latest")
 def latest(device_id):
-    # TODO M1:
-    # Läs senaste mätningen från PostgreSQL med get_latest_measurement(...).
-    # Returnera 404 om sensorn eller en mätning saknas.
-    #
-    # TODO M2:
-    # Utöka M1-lösningen med cache-aside:
-    # 1. Försök läsa från Redis.
-    # 2. Vid cache miss: läs från PostgreSQL.
-    # 3. Spara databasresultatet i Redis.
-    return jsonify({
-        "message": "TODO: implementera latest measurement",
-        "deviceId": device_id
-    }), 501
+    """Senaste mätningen för en sensor."""
+    measurement = get_latest_measurement(device_id)
+
+    if measurement is None:
+        if not device_exists(device_id):
+            return jsonify({
+                "error": "unknown device",
+                "deviceId": device_id,
+            }), 404
+        return jsonify({
+            "error": "no measurement for device",
+            "deviceId": device_id,
+        }), 404
+
+    return jsonify({"source": "database", "measurement": measurement}), 200
 
 
 @app.get("/devices/<device_id>/measurements")
 def device_history(device_id):
-    # TODO M1:
-    # Hämta sensorhistorik från PostgreSQL.
-    # Känd sensor utan mätningar: 200 och []. Okänd sensor: 404.
-    return jsonify({
-        "message": "TODO: implementera device history",
-        "deviceId": device_id
-    }), 501
+    """Historik för en sensor.
+
+    Skillnaden mellan tomt och okänt är viktig: en känd sensor utan mätningar
+    är ett giltigt tillstånd och ger 200 med en tom lista, medan ett okänt
+    sensor-id är ett klientfel och ger 404.
+    """
+    if not device_exists(device_id):
+        return jsonify({
+            "error": "unknown device",
+            "deviceId": device_id,
+        }), 404
+
+    return jsonify(get_measurements_for_device(device_id)), 200
 
 
 @app.post("/measurements")
@@ -80,19 +90,22 @@ def create_measurement():
         print(f"INVALID measurement from {data.get('deviceId', 'unknown')}: {errors}")
         return jsonify({"errors": errors}), 400
 
-    # TODO M1:
-    # Kontrollera med device_exists(...) att deviceId tillhör en känd sensor.
-    # Okänd sensor ska ge 400 med ett tydligt JSON-fel.
-    #
-    # Spara till PostgreSQL via insert_measurement(data).
-    #
-    # TODO M2:
-    # Uppdatera latest-cache för sensorn.
-    #
-    # Under starter-fasen returneras 202 så att simulatorn kan köras
-    # även innan studenten implementerat persistensen.
-    print(f"VALID measurement received: {data}")
-    return jsonify({"status": "accepted", "measurement": data}), 202
+    device_id = data["deviceId"]
+
+    # Okänd sensor är ett klientfel, inte ett serverfel. Utan den här kontrollen
+    # hade främmande nyckel-villkoret i databasen gett ett 500-svar i stället.
+    if not device_exists(device_id):
+        print(f"UNKNOWN device rejected: {device_id}")
+        return jsonify({
+            "errors": [f"unknown deviceId: {device_id}"],
+        }), 400
+
+    measurement = insert_measurement(data)
+
+    print(f"STORED measurement {measurement['id']} for {device_id}")
+    response = jsonify({"status": "created", "measurement": measurement})
+    response.headers["Location"] = f"/devices/{device_id}/latest"
+    return response, 201
 
 
 @app.get("/statistics")
@@ -100,6 +113,23 @@ def statistics():
     # ⭐ Utmaning:
     # Returnera antal devices, antal measurements, avg temp etc.
     return jsonify({"message": "Optional challenge"}), 501
+
+
+@app.errorhandler(404)
+def not_found(_error):
+    return jsonify({"error": "not found", "path": request.path}), 404
+
+
+@app.errorhandler(405)
+def method_not_allowed(_error):
+    return jsonify({"error": "method not allowed", "method": request.method}), 405
+
+
+@app.errorhandler(psycopg2.Error)
+def database_error(error):
+    """Databasfel ska ge ett JSON-svar, inte Flasks HTML-sida."""
+    print(f"DATABASE error on {request.path}: {error}")
+    return jsonify({"error": "database unavailable"}), 503
 
 
 if __name__ == "__main__":
