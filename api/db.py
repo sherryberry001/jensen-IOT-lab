@@ -9,6 +9,11 @@ import psycopg2.extras
 # API:t alltid returnerar samma fält oavsett vilken endpoint som svarar.
 MEASUREMENT_COLUMNS = "id, device_id, temperature, humidity, battery, created_at"
 
+# En sensor räknas som online om den skickat in ett mätvärde inom så här många
+# sekunder. Simulatorn skickar var femte sekund, så 30 sekunder ger marginal
+# för några missade intervall innan sensorn flaggas som offline.
+ONLINE_THRESHOLD_SECONDS = int(os.getenv("ONLINE_THRESHOLD_SECONDS", "30"))
+
 
 def get_connection():
     return psycopg2.connect(
@@ -141,3 +146,119 @@ def insert_measurement(data):
         data.get("battery"),
     )
     return _query(query, params, one=True)
+
+
+# --- Fördjupning: statistik och sensorstatus ---------------------------------
+
+
+def _clean(row):
+    """Gör en aggregatrad JSON-vänlig: Decimal -> float, tidsstämpel -> ISO 8601."""
+    out = {}
+    for key, value in row.items():
+        if isinstance(value, Decimal):
+            out[key] = float(value)
+        elif key.endswith("_at") and value is not None:
+            out[key] = value.isoformat()
+        else:
+            out[key] = value
+    return out
+
+
+def get_statistics():
+    """Aggregerad statistik för /statistics.
+
+    Bygger på samma aggregat som de obligatoriska SQL-uppgifterna (COUNT, AVG
+    och ett 24-timmarsfilter) och lägger till min/max samt en nedbrytning per
+    sensor, som i sin tur ger svaret på fördjupningsfrågorna om varmaste och
+    mest aktiva sensor.
+    """
+    totals_query = """
+        SELECT
+            (SELECT COUNT(*) FROM devices)  AS device_count,
+            COUNT(*)                        AS measurement_count,
+            ROUND(AVG(temperature), 2)      AS avg_temperature,
+            MIN(temperature)                AS min_temperature,
+            MAX(temperature)                AS max_temperature,
+            ROUND(AVG(humidity), 2)         AS avg_humidity,
+            ROUND(AVG(battery), 1)          AS avg_battery,
+            MAX(created_at)                 AS last_measurement_at,
+            COUNT(*) FILTER (
+                WHERE created_at >= NOW() - INTERVAL '24 hours'
+            )                               AS measurements_last_24h
+        FROM measurements;
+    """
+
+    per_device_query = """
+        SELECT
+            device_id,
+            COUNT(*)                    AS measurement_count,
+            ROUND(AVG(temperature), 2)  AS avg_temperature,
+            MIN(temperature)            AS min_temperature,
+            MAX(temperature)            AS max_temperature,
+            MAX(created_at)             AS last_measurement_at
+        FROM measurements
+        GROUP BY device_id
+        ORDER BY device_id;
+    """
+
+    with _cursor() as cur:
+        cur.execute(totals_query)
+        totals = _clean(cur.fetchone())
+        cur.execute(per_device_query)
+        per_device = [_clean(row) for row in cur.fetchall()]
+
+    warmest = max(
+        (row for row in per_device if row["avg_temperature"] is not None),
+        key=lambda row: row["avg_temperature"],
+        default=None,
+    )
+    most_active = max(
+        per_device,
+        key=lambda row: row["measurement_count"],
+        default=None,
+    )
+
+    return {
+        "totals": totals,
+        "perDevice": per_device,
+        "warmestDevice": warmest,
+        "mostActiveDevice": most_active,
+    }
+
+
+def get_devices_with_status(threshold_seconds=ONLINE_THRESHOLD_SECONDS):
+    """Sensorer med online/offline-status baserat på senaste inkomna mätning.
+
+    LEFT JOIN gör att en sensor som ännu inte skickat något också kommer med,
+    men då som offline med last_seen = null.
+    """
+    query = """
+        SELECT
+            d.id,
+            d.device_id,
+            d.location,
+            d.device_type,
+            s.last_seen,
+            COALESCE(s.measurement_count, 0) AS measurement_count,
+            CASE
+                WHEN s.last_seen >= NOW() - make_interval(secs => %s) THEN 'online'
+                ELSE 'offline'
+            END AS status
+        FROM devices d
+        LEFT JOIN (
+            SELECT device_id,
+                   MAX(created_at) AS last_seen,
+                   COUNT(*)        AS measurement_count
+            FROM measurements
+            GROUP BY device_id
+        ) s ON s.device_id = d.device_id
+        ORDER BY d.device_id;
+    """
+    with _cursor() as cur:
+        cur.execute(query, (threshold_seconds,))
+        rows = [dict(row) for row in cur.fetchall()]
+
+    for row in rows:
+        if row.get("last_seen") is not None:
+            row["last_seen"] = row["last_seen"].isoformat()
+    return rows

@@ -5,11 +5,14 @@ import socket
 import psycopg2
 
 from db import (
+    ONLINE_THRESHOLD_SECONDS,
     device_exists,
     get_devices,
+    get_devices_with_status,
     get_latest_measurement,
     get_measurements,
     get_measurements_for_device,
+    get_statistics,
     insert_measurement,
 )
 from validation import validate_measurement
@@ -63,6 +66,21 @@ def health_dependencies():
 @app.get("/devices")
 def devices():
     return jsonify(get_devices()), 200
+
+
+@app.get("/devices/status")
+def devices_status():
+    """Fördjupning: online/offline per sensor.
+
+    En sensor räknas som online om dess senaste mätning kom in inom
+    tröskelvärdet. Statusen härleds ur mätdatan i stället för att sensorerna
+    skickar en egen heartbeat, vilket gör att den fungerar även för sensorer
+    som inte kan rapportera att de mår dåligt.
+    """
+    return jsonify({
+        "thresholdSeconds": ONLINE_THRESHOLD_SECONDS,
+        "devices": get_devices_with_status(),
+    }), 200
 
 
 @app.get("/measurements")
@@ -149,9 +167,8 @@ def create_measurement():
 
 @app.get("/statistics")
 def statistics():
-    # ⭐ Utmaning:
-    # Returnera antal devices, antal measurements, avg temp etc.
-    return jsonify({"message": "Optional challenge"}), 501
+    """Fördjupning: aggregerad statistik över alla sensorer."""
+    return jsonify(get_statistics()), 200
 
 
 @app.errorhandler(404)

@@ -53,3 +53,97 @@ ORDER BY created_at DESC;
 SELECT COUNT(*) AS measurements_last_24h
 FROM measurements
 WHERE created_at >= NOW() - INTERVAL '24 hours';
+
+
+-- =============================================================================
+-- Fördjupning: analyser som ligger bakom /statistics
+-- =============================================================================
+
+
+-- -----------------------------------------------------------------------------
+-- 4. Sensorn med högst medeltemperatur
+-- -----------------------------------------------------------------------------
+-- GROUP BY delar upp mätningarna per sensor innan AVG räknas ut, så att man får
+-- ett medelvärde per sensor i stället för ett för hela tabellen. Sorteringen
+-- lägger den varmaste först och LIMIT 1 plockar ut den.
+--
+-- JOIN mot devices tar med plats och typ, vilket gör svaret användbart utan att
+-- behöva slå upp sensorn separat.
+
+SELECT
+    d.device_id,
+    d.location,
+    ROUND(AVG(m.temperature), 2) AS avg_temperature,
+    COUNT(*)                     AS measurement_count
+FROM measurements m
+JOIN devices d ON d.device_id = m.device_id
+GROUP BY d.device_id, d.location
+ORDER BY avg_temperature DESC
+LIMIT 1;
+
+
+-- Hela rankningen, som är den form /statistics returnerar i fältet perDevice.
+-- Att titta på listan i stället för bara vinnaren gör det synligt om två
+-- sensorer ligger nära varandra.
+
+SELECT
+    d.device_id,
+    d.location,
+    ROUND(AVG(m.temperature), 2) AS avg_temperature,
+    MIN(m.temperature)           AS min_temperature,
+    MAX(m.temperature)           AS max_temperature
+FROM measurements m
+JOIN devices d ON d.device_id = m.device_id
+GROUP BY d.device_id, d.location
+ORDER BY avg_temperature DESC;
+
+
+-- -----------------------------------------------------------------------------
+-- 5. Mest aktiv sensor
+-- -----------------------------------------------------------------------------
+-- Samma mönster, men aggregatet är COUNT i stället för AVG. "Mest aktiv"
+-- betyder här flest godkända mätningar. Sensor-003 skickar med flit trasig data
+-- ibland, och eftersom de raderna aldrig sparas hamnar den normalt sist.
+-- Det är just den skillnaden mellan skickat och sparat som gör måttet
+-- intressant att titta på.
+
+SELECT
+    d.device_id,
+    d.location,
+    COUNT(*)            AS measurement_count,
+    MAX(m.created_at)   AS last_measurement_at
+FROM measurements m
+JOIN devices d ON d.device_id = m.device_id
+GROUP BY d.device_id, d.location
+ORDER BY measurement_count DESC
+LIMIT 1;
+
+
+-- -----------------------------------------------------------------------------
+-- 6. Online/offline-status per sensor
+-- -----------------------------------------------------------------------------
+-- LEFT JOIN i stället för JOIN, så att en sensor som ännu inte skickat något
+-- också kommer med i resultatet, men då med last_seen som NULL. CASE-uttrycket
+-- ger offline för både NULL och för gamla värden, eftersom NULL >= tidpunkt
+-- aldrig är sant.
+--
+-- Detta är frågan bakom endpointen GET /devices/status.
+
+SELECT
+    d.device_id,
+    d.location,
+    s.last_seen,
+    COALESCE(s.measurement_count, 0) AS measurement_count,
+    CASE
+        WHEN s.last_seen >= NOW() - INTERVAL '30 seconds' THEN 'online'
+        ELSE 'offline'
+    END AS status
+FROM devices d
+LEFT JOIN (
+    SELECT device_id,
+           MAX(created_at) AS last_seen,
+           COUNT(*)        AS measurement_count
+    FROM measurements
+    GROUP BY device_id
+) s ON s.device_id = d.device_id
+ORDER BY d.device_id;
