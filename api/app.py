@@ -13,7 +13,7 @@ from db import (
     insert_measurement,
 )
 from validation import validate_measurement
-from cache import get_latest_from_cache, set_latest_in_cache
+from cache import cache_available, get_latest_from_cache, set_latest_in_cache
 
 app = Flask(__name__)
 
@@ -28,11 +28,36 @@ def dashboard():
 
 @app.get("/health")
 def health():
+    """Enkel hälsokontroll som medvetet inte rör PostgreSQL eller Redis.
+
+    Beroendenas status rapporteras i stället av /health/dependencies, så att
+    den här endpointen kan svara även när databasen är nere.
+    """
     return jsonify({
         "status": "ok",
         "version": APP_VERSION,
         "pod": POD_NAME,
     }), 200
+
+
+@app.get("/health/dependencies")
+def health_dependencies():
+    """Visar om PostgreSQL och Redis svarar."""
+    try:
+        get_devices()
+        database_ok = True
+    except psycopg2.Error:
+        database_ok = False
+
+    redis_ok = cache_available()
+
+    payload = {
+        "database": "ok" if database_ok else "unavailable",
+        "cache": "ok" if redis_ok else "unavailable",
+        "pod": POD_NAME,
+    }
+    # Redis är inte kritiskt: API:t fungerar utan cache. PostgreSQL är kritiskt.
+    return jsonify(payload), 200 if database_ok else 503
 
 
 @app.get("/devices")
@@ -47,7 +72,16 @@ def measurements():
 
 @app.get("/devices/<device_id>/latest")
 def latest(device_id):
-    """Senaste mätningen för en sensor."""
+    """Senaste mätningen för en sensor, via cache-aside.
+
+    1. Läs från Redis.
+    2. Vid miss: läs från PostgreSQL.
+    3. Skriv tillbaka till Redis så att nästa anrop träffar cachen.
+    """
+    cached = get_latest_from_cache(device_id)
+    if cached is not None:
+        return jsonify({"source": "cache", "measurement": cached}), 200
+
     measurement = get_latest_measurement(device_id)
 
     if measurement is None:
@@ -61,6 +95,7 @@ def latest(device_id):
             "deviceId": device_id,
         }), 404
 
+    set_latest_in_cache(device_id, measurement)
     return jsonify({"source": "database", "measurement": measurement}), 200
 
 
@@ -101,6 +136,10 @@ def create_measurement():
         }), 400
 
     measurement = insert_measurement(data)
+
+    # Skrivningen håller cachen aktuell, så att en läsare direkt efter en POST
+    # inte får ett gammalt värde serverat ur Redis.
+    set_latest_in_cache(device_id, measurement)
 
     print(f"STORED measurement {measurement['id']} for {device_id}")
     response = jsonify({"status": "created", "measurement": measurement})
